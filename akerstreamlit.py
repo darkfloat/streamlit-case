@@ -37,22 +37,22 @@ def calculate_portfolio_kpis(df, snapshot_date):
     # Filter to current leases only (exclude future pipeline for core metrics)
     current_leases = df_snapshot[df_snapshot['lease_state'] == 'current'].copy()
     
-    # Total units (unique units in current state)
-    total_units = current_leases['unit_number_canonical'].nunique()
+    # CHANGE: Total units from ALL leases (not just current)
+    total_units = df_snapshot['unit_number_canonical'].nunique()  # ← Changed this line
     
-    # Occupied units
+    # Occupied units (still from current only)
     occupied_units = current_leases[current_leases['status'] == 'occupied']['unit_number_canonical'].nunique()
     
     # Physical occupancy
     physical_occ = (occupied_units / total_units * 100) if total_units > 0 else 0
     
     # Economic occupancy
-    potential_rent = current_leases['market_rent'].sum()
-    actual_rent = current_leases['actual_rent'].sum()
+    potential_rent = df_snapshot['market_rent'].sum() 
+    actual_rent = current_leases['actual_rent'].sum() 
     economic_occ = (actual_rent / potential_rent * 100) if potential_rent > 0 else 0
     
     # Vacant units
-    vacant_ready = len(current_leases[current_leases['status'] == 'vacant'])
+    vacant_ready = current_leases[current_leases['status'] == 'vacant']['unit_number_canonical'].nunique()
     
     # Pre-leased units (future residents)
     future_leases = df_snapshot[df_snapshot['lease_state'] == 'future']
@@ -71,8 +71,13 @@ def calculate_portfolio_kpis(df, snapshot_date):
     # Delinquency
     total_balance = current_leases['balance'].sum()
     total_charges = current_leases['total_charges'].sum()
-    delinquency_rate = (total_balance / total_charges * 100) if total_charges > 0 else 0
     
+    # CHANGE: Use actual_rent as fallback when total_charges is missing
+    if pd.isna(total_charges) or total_charges == 0:
+        total_charges = current_leases['actual_rent'].sum()
+    
+    delinquency_rate = (total_balance / total_charges * 100) if total_charges > 0 else 0
+
     # Average rent
     avg_market_rent = current_leases['market_rent'].mean()
     avg_actual_rent = current_leases['actual_rent'].mean()
@@ -98,12 +103,12 @@ def calculate_property_kpis(df, property_name, snapshot_date):
     df_filtered = df[(df['property_name'] == property_name) & (df['snapshot_date'] == snapshot_date)].copy()
     current_leases = df_filtered[df_filtered['lease_state'] == 'current'].copy()
     
-    total_units = current_leases['unit_number_canonical'].nunique()
+    total_units = df_filtered['unit_number_canonical'].nunique()  # ← Changed this line
     occupied_units = current_leases[current_leases['status'] == 'occupied']['unit_number_canonical'].nunique()
     
     physical_occ = (occupied_units / total_units * 100) if total_units > 0 else 0
-    
-    potential_rent = current_leases['market_rent'].sum()
+        
+    potential_rent = df_filtered['market_rent'].sum()
     actual_rent = current_leases['actual_rent'].sum()
     economic_occ = (actual_rent / potential_rent * 100) if potential_rent > 0 else 0
     
@@ -634,10 +639,12 @@ elif page == "🏘️ Property Drill-Down":
     
     # Create display dataframe
     display_df = current_leases[[
-        'unit_number', 'unit_type', 'sq_ft', 'status', 'resident_name',
+        'unit_number_canonical', 'unit_type', 'sq_ft', 'status', 'resident_name',
         'lease_start', 'lease_end', 'market_rent', 'actual_rent', 'balance'
     ]].copy()
-    
+
+    display_df = display_df.rename(columns={'unit_number_canonical': 'Unit Number'}) 
+
     # Format columns
     display_df['lease_start'] = display_df['lease_start'].dt.strftime('%Y-%m-%d')
     display_df['lease_end'] = display_df['lease_end'].dt.strftime('%Y-%m-%d')
